@@ -17,16 +17,16 @@
   ; Run PowerShell script to prompt user and verify the key online or offline
   nsExec::ExecToStack 'powershell -NoProfile -WindowStyle Hidden -Command "& { \
     Add-Type -AssemblyName Microsoft.VisualBasic; \
-    $key = [Microsoft.VisualBasic.Interaction]::InputBox(\"Please enter the Admin Uninstall Key to uninstall Remote Desk Agent:\", \"Uninstall Protection Required\", \"\"); \
-    if (!$key) { exit 2; } \
+    $$key = [Microsoft.VisualBasic.Interaction]::InputBox(\"Please enter the Admin Uninstall Key to uninstall Remote Desk Agent:\", \"Uninstall Protection Required\", \"\"); \
+    if (!$$key) { exit 2; } \
     try { \
-      $body = @{ email = \"$1\"; uninstallKey = \"$key\" } | ConvertTo-Json; \
-      $response = Invoke-RestMethod -Uri \"$3/auth/verify-uninstall-key\" -Method Post -Body $body -ContentType \"application/json\" -TimeoutSec 5 -ErrorAction Stop; \
-      if ($response.success -eq $true -or $response.success -eq \"true\") { exit 0 } else { exit 1 } \
+      $$body = @{ email = \"$1\"; uninstallKey = \"$$key\" } | ConvertTo-Json; \
+      $$response = Invoke-RestMethod -Uri \"$3/auth/verify-uninstall-key\" -Method Post -Body $$body -ContentType \"application/json\" -TimeoutSec 5 -ErrorAction Stop; \
+      if ($$response.success -eq $$true -or $$response.success -eq \"true\") { exit 0 } else { exit 1 } \
     } catch { \
-      $hashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($key)); \
-      $hashStr = [System.BitConverter]::ToString($hashBytes).Replace(\"-\", \"\").ToLower(); \
-      if ($hashStr -eq \"$2\") { exit 0 } else { exit 1 } \
+      $$hashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($$key)); \
+      $$hashStr = [System.BitConverter]::ToString($$hashBytes).Replace(\"-\", \"\").ToLower(); \
+      if ($$hashStr -eq \"$2\") { exit 0 } else { exit 1 } \
     } \
   }"'
 
