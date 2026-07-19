@@ -13,23 +13,18 @@
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:mac": "electron-vite build && electron-builder --mac",
     "dist:linux": "electron-vite build && electron-builder --linux",
-    "preview": "electron-vite preview",
-    "postinstall": "electron-rebuild"
+    "preview": "electron-vite preview"
   },
   "dependencies": {
     "axios": "^1.7.2",
-    "better-sqlite3": "^9.4.3",
     "electron-log": "^5.1.2",
     "electron-updater": "^6.1.7",
-    "keytar": "^7.9.0",
     "zustand": "^4.5.4"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-ts": "^2.0.0",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
-    "@electron/rebuild": "^3.6.0",
-    "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.14.8",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

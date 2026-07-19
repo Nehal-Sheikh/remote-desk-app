@@ -8,13 +8,12 @@ on:
         required: true
 
 jobs:
-  build-and-deploy:
-    name: Build Installer for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-
+  # --------------------------------------------------
+  # Windows Installer Build Job
+  # --------------------------------------------------
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
     permissions:
       contents: write
 
@@ -35,16 +34,13 @@ jobs:
       - name: Install Project Dependencies
         run: npm install
 
-      - name: Rebuild Native Addons
-        run: npm run postinstall
-
       - name: Compile and Transpile App
         run: npm run build:renderer
 
-      - name: Package Desktop Installers
+      - name: Package Desktop Installer (Windows)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist
+        run: npm run dist:win
 
       - name: Upload Installer to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -52,6 +48,88 @@ jobs:
           tag_name: ${{ github.event.inputs.version }}
           files: |
             release/*.exe
+            release/latest.yml
+
+  # --------------------------------------------------
+  # macOS Installer Build Job
+  # --------------------------------------------------
+  build-macos:
+    name: Build macOS Installer
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Tagged Release Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version }}
+          fetch-depth: 0
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'package.json'
+
+      - name: Install Project Dependencies
+        run: npm install
+
+      - name: Compile and Transpile App
+        run: npm run build:renderer
+
+      - name: Package Desktop Installer (macOS)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:mac
+
+      - name: Upload Installer to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: |
             release/*.dmg
+            release/latest-mac.yml
+
+  # --------------------------------------------------
+  # Linux Installer Build Job
+  # --------------------------------------------------
+  build-linux:
+    name: Build Linux Installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Tagged Release Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version }}
+          fetch-depth: 0
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'package.json'
+
+      - name: Install Project Dependencies
+        run: npm install
+
+      - name: Compile and Transpile App
+        run: npm run build:renderer
+
+      - name: Package Desktop Installer (Linux)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:linux
+
+      - name: Upload Installer to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: |
             release/*.AppImage
-            release/latest*.yml
+            release/latest-linux.yml

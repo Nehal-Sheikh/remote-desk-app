@@ -3,83 +3,39 @@ import { join } from 'path';
 import fs from 'fs';
 import log from 'electron-log';
 
-let keytar: any = null;
-try {
-  keytar = require('keytar');
-} catch (e) {
-  log.warn('keytar native module not compiled. Using local file fallback for credentials.');
-}
-
-const SERVICE = 'RemoteDeskAgent';
-const ACCOUNT = 'access-token';
-
-// Simple file-based fallback storage for local development/testing when native modules aren't compiled
-function getFallbackPath(): string {
+function getTokenPath(): string {
   const userData = app.getPath('userData');
-  return join(userData, 'token_fallback.json');
+  return join(userData, 'token_store.json');
 }
 
-function writeFallback(token: string): void {
+export async function storeToken(token: string): Promise<void> {
   try {
-    fs.writeFileSync(getFallbackPath(), JSON.stringify({ token }));
+    fs.writeFileSync(getTokenPath(), JSON.stringify({ token }));
   } catch (err) {
-    log.error('Failed to write fallback token', err);
+    log.error('Failed to store token:', err);
   }
 }
 
-function readFallback(): string | null {
+export async function getStoredToken(): Promise<string | null> {
   try {
-    const p = getFallbackPath();
+    const p = getTokenPath();
     if (fs.existsSync(p)) {
       const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
       return data.token || null;
     }
   } catch (err) {
-    log.error('Failed to read fallback token', err);
+    log.error('Failed to read token:', err);
   }
   return null;
 }
 
-function clearFallback(): void {
+export async function clearToken(): Promise<void> {
   try {
-    const p = getFallbackPath();
+    const p = getTokenPath();
     if (fs.existsSync(p)) {
       fs.unlinkSync(p);
     }
-  } catch (err) {}
-}
-
-export async function storeToken(token: string): Promise<void> {
-  if (keytar) {
-    try {
-      await keytar.setPassword(SERVICE, ACCOUNT, token);
-      return;
-    } catch (err) {
-      log.error('keytar failed, falling back to file:', err);
-    }
+  } catch (err) {
+    log.error('Failed to clear token:', err);
   }
-  writeFallback(token);
-}
-
-export async function getStoredToken(): Promise<string | null> {
-  if (keytar) {
-    try {
-      return await keytar.getPassword(SERVICE, ACCOUNT);
-    } catch (err) {
-      log.error('keytar failed, falling back to file:', err);
-    }
-  }
-  return readFallback();
-}
-
-export async function clearToken(): Promise<void> {
-  if (keytar) {
-    try {
-      await keytar.deletePassword(SERVICE, ACCOUNT);
-      return;
-    } catch (err) {
-      log.error('keytar failed, falling back to file:', err);
-    }
-  }
-  clearFallback();
 }
