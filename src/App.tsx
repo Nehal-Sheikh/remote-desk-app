@@ -5,12 +5,15 @@ import axios from 'axios';
 declare global {
   interface Window {
     api: {
-      startTracking: (token: string) => Promise<{ success: boolean; error?: string }>;
+      startTracking: (token: string, apiUrl?: string, refreshToken?: string) => Promise<{ success: boolean; error?: string }>;
       stopTracking: () => Promise<{ success: boolean }>;
-      getStatus: () => Promise<{ isTracking: boolean }>;
+      getStatus: () => Promise<{ isTracking: boolean; uninstallAllowed?: boolean }>;
       logout: () => Promise<{ success: boolean }>;
       hideWindow: () => void;
       minimizeWindow: () => void;
+      reportMouseEvent: () => void;
+      reportKeyEvent: () => void;
+      onSessionExpired: (callback: () => void) => () => void;
       onSyncStatus: (callback: (data: { pendingCount: number }) => void) => () => void;
       onUpdaterAvailable: (callback: () => void) => () => void;
       onUpdaterReady: (callback: () => void) => () => void;
@@ -28,28 +31,131 @@ const App: React.FC = () => {
   const [isTrackingActive, setIsTrackingActive] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [userRole, setUserRole] = useState('');
+  const [uninstallAllowed, setUninstallAllowed] = useState(true);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [updaterMsg, setUpdaterMsg] = useState('');
 
-  useEffect(() => {
-    // Check initial status on load
-    window.api.getStatus().then((status) => {
-      setIsTrackingActive(status.isTracking);
-    });
+  const [elapsedTime, setElapsedTime] = useState(0);
 
-    // Check if we are already logged in by retrieving token from backend status or keytar
-    // Set authenticated if tracking is running or token was retrieved during main initialization
+  // Helper to get today's date key: e.g. "tracked_seconds_2026-07-20_employee@email.com"
+  const getTodayKey = (emailStr: string) => {
+    if (!emailStr) return '';
+    const dateStr = new Date().toISOString().split('T')[0];
+    return `tracked_seconds_${dateStr}_${emailStr.toLowerCase()}`;
+  };
+
+  // Restore today's accumulated tracking seconds whenever userEmail changes or app mounts
+  useEffect(() => {
+    if (userEmail) {
+      const key = getTodayKey(userEmail);
+      const savedSeconds = localStorage.getItem(key);
+      if (savedSeconds) {
+        setElapsedTime(parseInt(savedSeconds, 10) || 0);
+      } else {
+        setElapsedTime(0);
+      }
+    }
+  }, [userEmail]);
+
+  // Timer tick effect: increments elapsedTime every second & persists to today's date key
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isTrackingActive) {
+      timer = setInterval(() => {
+        setElapsedTime((prev) => {
+          const next = prev + 1;
+          if (userEmail) {
+            const key = getTodayKey(userEmail);
+            if (key) {
+              localStorage.setItem(key, String(next));
+            }
+          }
+          return next;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isTrackingActive, userEmail]);
+
+  const formatTime = (totalSeconds: number) => {
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    // Read stored session first so role is available before async getStatus() resolves
     const storedEmail = localStorage.getItem('agent_user_email');
     const storedRole = localStorage.getItem('agent_user_role') || '';
+    const storedAllowed = localStorage.getItem('agent_user_uninstall_allowed') !== 'false';
     if (storedEmail) {
       setUserEmail(storedEmail);
       setUserRole(storedRole);
+      setUninstallAllowed(storedAllowed);
       setIsAuthenticated(true);
     }
+
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
+    // Check tracking/policy status from main process
+    window.api.getStatus().then(async (status: any) => {
+      setIsTrackingActive(status.isTracking);
+      if (status.uninstallAllowed !== undefined) {
+        // Only restrict sign-out for EMPLOYEEs; admins/managers always keep it enabled
+        const role = localStorage.getItem('agent_user_role') || '';
+        const allowed = role !== 'EMPLOYEE' ? true : status.uninstallAllowed;
+        setUninstallAllowed(allowed);
+        localStorage.setItem('agent_user_uninstall_allowed', String(allowed));
+      }
+
+      // If user session is active in UI but background tracker is not running, try to resume it
+      if (storedEmail && !status.isTracking) {
+        const res = await window.api.startTracking('', apiUrl);
+        if (res.success) {
+          setIsTrackingActive(true);
+        } else {
+          // No valid credentials in main process token store — force logout to show login screen
+          handleLogout();
+          setError('Please log in to start activity tracking.');
+        }
+      }
+    });
+
+    // Forward mouse & keyboard events from the renderer window to the main process.
+    // Throttled so we don't flood IPC — at most one report per 500ms per event type.
+    let mouseThrottle = false;
+    let keyThrottle = false;
+
+    const onMouseMove = () => {
+      if (mouseThrottle) return;
+      mouseThrottle = true;
+      window.api.reportMouseEvent();
+      setTimeout(() => { mouseThrottle = false; }, 500);
+    };
+
+    const onKeyDown = () => {
+      if (keyThrottle) return;
+      keyThrottle = true;
+      window.api.reportKeyEvent();
+      setTimeout(() => { keyThrottle = false; }, 500);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mousedown', onMouseMove);
+    window.addEventListener('keydown', onKeyDown);
 
     // Subscribe to sync queue count updates
     const unsubscribeSync = window.api.onSyncStatus((data) => {
       setPendingSyncCount(data.pendingCount);
+    });
+
+    // Subscribe to session expiration events
+    const unsubscribeSession = window.api.onSessionExpired(() => {
+      handleLogout();
+      setError('Your session has expired. Please log in again.');
     });
 
     // Auto-update event listeners
@@ -62,7 +168,11 @@ const App: React.FC = () => {
     });
 
     return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mousedown', onMouseMove);
+      window.removeEventListener('keydown', onKeyDown);
       unsubscribeSync();
+      unsubscribeSession();
       unsubscribeAvailable();
       unsubscribeReady();
     };
@@ -75,26 +185,31 @@ const App: React.FC = () => {
 
     try {
       // Authenticate with remote-desk-backend
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
       const res = await axios.post(`${apiUrl}/auth/login`, {
         email,
         password,
       });
 
-      const { accessToken, role } = res.data;
+      const { accessToken, refreshToken, user } = res.data;
+      const role = user?.role;
+      // Non-EMPLOYEE roles (ADMIN/MANAGER) always have sign-out access
+      const allowed = role !== 'EMPLOYEE' ? true : (user?.uninstallAllowed ?? false);
 
       if (role !== 'EMPLOYEE' && role !== 'ADMIN' && role !== 'MANAGER') {
         throw new Error('Only company users can run the desktop agent.');
       }
 
       localStorage.setItem('agent_user_email', email);
-      localStorage.setItem('agent_user_role', role);
+      localStorage.setItem('agent_user_role', role || '');
+      localStorage.setItem('agent_user_uninstall_allowed', String(allowed));
       setUserEmail(email);
       setUserRole(role);
+      setUninstallAllowed(allowed);
       setIsAuthenticated(true);
 
-      // Start background tracking with the newly verified JWT
-      const trackRes = await window.api.startTracking(accessToken);
+      // Start background tracking with the newly verified JWT and refresh token
+      const trackRes = await window.api.startTracking(accessToken, apiUrl, refreshToken);
       if (trackRes.success) {
         setIsTrackingActive(true);
       } else {
@@ -115,9 +230,13 @@ const App: React.FC = () => {
     } else {
       // Fetch token or request password. For simplicity in UI, we fetch from keytar inside main
       // Let's call start-tracking again. Main will reuse the current keychain token.
-      const res = await window.api.startTracking('');
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+      const res = await window.api.startTracking('', apiUrl);
       if (res.success) {
         setIsTrackingActive(true);
+      } else {
+        setError(res.error || 'Failed to resume tracking. Please log in again.');
+        handleLogout();
       }
     }
   };
@@ -126,8 +245,11 @@ const App: React.FC = () => {
     await window.api.logout();
     localStorage.removeItem('agent_user_email');
     localStorage.removeItem('agent_user_role');
+    localStorage.removeItem('agent_user_uninstall_allowed');
     setIsAuthenticated(false);
     setIsTrackingActive(false);
+    setElapsedTime(0);
+    setUninstallAllowed(true);
     setUserRole('');
     setEmail('');
     setPassword('');
@@ -193,17 +315,24 @@ const App: React.FC = () => {
                     <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Monitoring Active</h3>
                     <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>{userEmail}</p>
                   </div>
-                  <div className="avatar">
-                    {userEmail.substring(0, 2).toUpperCase()}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="avatar">
+                      {userEmail.substring(0, 2).toUpperCase()}
+                    </div>
+                    {(userRole !== 'EMPLOYEE' || uninstallAllowed) && (
+                      <button className="signout-icon-btn" onClick={handleLogout} title="Sign Out">
+                        🚪
+                      </button>
+                    )}
                   </div>
                 </div>
 
                 <div className="status-indicator">
                   <div className={`status-ring ${isTrackingActive ? 'active' : ''}`}>
                     <div className="status-center">
-                      <span className="status-text">Status</span>
+                      <span className="status-text">{isTrackingActive ? 'Tracking' : 'Paused'}</span>
                       <span className={`status-value ${isTrackingActive ? 'active' : 'paused'}`}>
-                        {isTrackingActive ? 'Active' : 'Paused'}
+                        {formatTime(elapsedTime)}
                       </span>
                     </div>
                   </div>
@@ -227,11 +356,6 @@ const App: React.FC = () => {
                 <button className={`btn ${isTrackingActive ? 'btn-secondary' : ''}`} onClick={handleToggleTracking}>
                   {isTrackingActive ? '⏸️  Pause Tracking' : '▶️  Resume Tracking'}
                 </button>
-                {userRole !== 'EMPLOYEE' && (
-                  <button className="btn btn-secondary" onClick={handleLogout} style={{ marginTop: '8px' }}>
-                    Sign Out
-                  </button>
-                )}
                 <div className="footer-info">
                   Running version 1.0.0 • Remote Desk Agent
                 </div>

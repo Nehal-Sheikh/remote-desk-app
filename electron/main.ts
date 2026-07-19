@@ -11,7 +11,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
-import { startTracking, stopTracking, isTracking, clearUninstallPolicyFile } from './tracker'
+import { startTracking, stopTracking, isTracking, clearUninstallPolicyFile, isUninstallAllowed, incrementMouseEvent, incrementKeyEvent } from './tracker'
 import { getStoredToken, clearToken } from './token-store'
 
 // Configure logging
@@ -43,7 +43,7 @@ function createWindow(): void {
     backgroundColor: '#0d1117',
     icon: join(__dirname, '../../build/icon.png'),
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/preload.js'),
       sandbox: false,
       contextIsolation: true
     }
@@ -93,7 +93,10 @@ function buildTrayMenu(tracking: boolean): Menu {
 
 function createTray(): void {
   const iconPath = join(__dirname, '../../build/tray-icon.png')
-  const icon = nativeImage.createFromPath(iconPath)
+  let icon = nativeImage.createFromPath(iconPath)
+  if (!icon.isEmpty()) {
+    icon = icon.resize({ width: 16, height: 16 })
+  }
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
   tray.setToolTip('Remote Desk Agent')
   tray.setContextMenu(buildTrayMenu(false))
@@ -109,9 +112,9 @@ function refreshTray(): void {
 
 // ── IPC Handlers ─────────────────────────────────────────────────────────────
 function registerIpcHandlers(): void {
-  ipcMain.handle('auth:start-tracking', async (_, token: string) => {
+  ipcMain.handle('auth:start-tracking', async (_, token: string, apiUrl?: string, refreshToken?: string) => {
     try {
-      await startTracking(token)
+      await startTracking(token, apiUrl, refreshToken)
       refreshTray()
       return { success: true }
     } catch (err) {
@@ -127,7 +130,10 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('auth:get-status', () => {
-    return { isTracking: isTracking() }
+    return { 
+      isTracking: isTracking(),
+      uninstallAllowed: isUninstallAllowed()
+    }
   })
 
   ipcMain.handle('auth:logout', async () => {
@@ -140,6 +146,10 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('window:hide', () => mainWindow?.hide())
   ipcMain.handle('window:minimize', () => mainWindow?.minimize())
+
+  // Track real user input events from the renderer for idle detection
+  ipcMain.on('input:mouse', () => incrementMouseEvent())
+  ipcMain.on('input:key', () => incrementKeyEvent())
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────

@@ -8,6 +8,8 @@ directories:
 
 files:
   - out/**/*
+  - build/tray-icon.png
+  - build/icon.png
 
 mac:
   category: public.app-category.business

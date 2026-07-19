@@ -1,4 +1,7 @@
 !macro customUnInit
+  ; Forcefully terminate the running app if it's currently open to prevent file locking
+  nsExec::Exec 'taskkill /F /IM "Remote Desk Agent.exe"'
+
   ; Check if the uninstall policy file exists
   IfFileExists "$APPDATA\Remote Desk Agent\uninstall_policy.txt" +1 no_policy
 

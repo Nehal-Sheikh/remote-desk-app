@@ -358,3 +358,25 @@ body {
   text-align: center;
   margin-top: 10px;
 }
+
+.signout-icon-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.signout-icon-btn:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.signout-icon-btn:active {
+  transform: scale(0.95);
+}
