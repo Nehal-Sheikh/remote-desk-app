@@ -1,0 +1,48 @@
+appId: io.remotedesk.agent
+productName: Remote Desk Agent
+copyright: Copyright © 2024 Remote Desk
+
+directories:
+  buildResources: build
+  output: release
+
+files:
+  - out/**/*
+
+mac:
+  category: public.app-category.business
+  icon: build/icon.icns
+  entitlementsInherit: build/entitlements.mac.plist
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  signingHashAlgorithms:
+    - sha256
+
+linux:
+  icon: build/icon.png
+  category: Office
+  target:
+    - target: AppImage
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Remote Desk Agent
+
+publish:
+  provider: github
+  releaseType: release

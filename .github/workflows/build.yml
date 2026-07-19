@@ -1,0 +1,57 @@
+name: Build & Package Installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version tag (e.g. v1.2.3)'
+        required: true
+
+jobs:
+  build-and-deploy:
+    name: Build Installer for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Tagged Release Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version }}
+          fetch-depth: 0
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'package.json'
+
+      - name: Install Project Dependencies
+        run: npm install
+
+      - name: Rebuild Native Addons
+        run: npm run postinstall
+
+      - name: Compile and Transpile App
+        run: npm run build:renderer
+
+      - name: Package Desktop Installers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist
+
+      - name: Upload Installer to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+            release/latest*.yml
