@@ -152,7 +152,8 @@ async function sendHeartbeat(): Promise<void> {
   resetInputStats();
 
   try {
-    await axios.post('http://localhost:3000/tracking/heartbeat', payload, {
+    const apiUrl = process.env.VITE_API_URL || 'http://localhost:3000';
+    await axios.post(`${apiUrl}/tracking/heartbeat`, payload, {
       headers: {
         Authorization: `Bearer ${currentToken}`
       }
@@ -175,7 +176,8 @@ async function syncOfflineData(): Promise<void> {
   
   for (const item of pending) {
     try {
-      await axios.post('http://localhost:3000/tracking/heartbeat', {
+      const apiUrl = process.env.VITE_API_URL || 'http://localhost:3000';
+      await axios.post(`${apiUrl}/tracking/heartbeat`, {
         appName: item.appName,
         windowTitle: item.windowTitle,
         isIdle: item.isIdle,

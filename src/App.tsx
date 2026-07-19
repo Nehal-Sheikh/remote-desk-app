@@ -71,8 +71,9 @@ const App: React.FC = () => {
     setLoading(true);
 
     try {
-      // Authenticate with remote-desk-backend (running on port 3000 by default)
-      const res = await axios.post('http://localhost:3000/auth/login', {
+      // Authenticate with remote-desk-backend
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const res = await axios.post(`${apiUrl}/auth/login`, {
         email,
         password,
       });
