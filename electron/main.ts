@@ -11,7 +11,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
-import { startTracking, stopTracking, isTracking } from './tracker'
+import { startTracking, stopTracking, isTracking, clearUninstallPolicyFile } from './tracker'
 import { getStoredToken, clearToken } from './token-store'
 
 // Configure logging
@@ -132,6 +132,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('auth:logout', async () => {
     stopTracking()
+    clearUninstallPolicyFile()
     await clearToken()
     refreshTray()
     return { success: true }

@@ -1,4 +1,6 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, app } from 'electron';
+import * as path from 'path';
+import * as fs from 'fs';
 import axios from 'axios';
 import log from 'electron-log';
 import { exec } from 'child_process';
@@ -132,6 +134,53 @@ export function stopTracking(): void {
   log.info('Activity tracking stopped');
 }
 
+function decodeJwt(token: string): any {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = Buffer.from(parts[1], 'base64').toString('utf8');
+    return JSON.parse(payload);
+  } catch (err) {
+    return null;
+  }
+}
+
+export function clearUninstallPolicyFile(): void {
+  try {
+    const policyPath = path.join(app.getPath('userData'), 'uninstall_policy.txt');
+    if (fs.existsSync(policyPath)) {
+      fs.unlinkSync(policyPath);
+      log.info('Local uninstall policy file cleared.');
+    }
+  } catch (err: any) {
+    log.error('Failed to clear uninstall policy file:', err.message);
+  }
+}
+
+function updateUninstallPolicyFile(allowed: boolean, hash: string | null): void {
+  try {
+    const payload = decodeJwt(currentToken || '');
+    const email = payload?.email || '';
+    if (!email) return;
+
+    const apiUrl = process.env.VITE_API_URL || 'http://localhost:3000';
+    const content = `[UninstallPolicy]
+email=${email}
+uninstallAllowed=${allowed}
+uninstallKeyHash=${hash || ''}
+apiUrl=${apiUrl}
+`;
+    const dir = app.getPath('userData');
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(dir, 'uninstall_policy.txt'), content, 'utf8');
+    log.info('Cached uninstall policy locally:', { email, allowed, hash: hash ? 'configured' : 'none' });
+  } catch (err: any) {
+    log.error('Failed to write local uninstall policy file:', err.message);
+  }
+}
+
 async function sendHeartbeat(): Promise<void> {
   if (!trackingActive || !currentToken) return;
 
@@ -153,12 +202,18 @@ async function sendHeartbeat(): Promise<void> {
 
   try {
     const apiUrl = process.env.VITE_API_URL || 'http://localhost:3000';
-    await axios.post(`${apiUrl}/tracking/heartbeat`, payload, {
+    const response = await axios.post(`${apiUrl}/tracking/heartbeat`, payload, {
       headers: {
         Authorization: `Bearer ${currentToken}`
       }
     });
     log.info('Heartbeat sent successfully to backend:', appName);
+
+    // Sync uninstall policy with the response payload
+    const { uninstallAllowed, uninstallKeyHash } = response.data;
+    if (uninstallAllowed !== undefined) {
+      updateUninstallPolicyFile(uninstallAllowed, uninstallKeyHash);
+    }
   } catch (err: any) {
     log.warn('Backend unreachable. Saving to offline SQLite buffer:', err.message);
     saveOfflineHeartbeat(payload);

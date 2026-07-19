@@ -27,6 +27,7 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isTrackingActive, setIsTrackingActive] = useState(false);
   const [userEmail, setUserEmail] = useState('');
+  const [userRole, setUserRole] = useState('');
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [updaterMsg, setUpdaterMsg] = useState('');
 
@@ -39,8 +40,10 @@ const App: React.FC = () => {
     // Check if we are already logged in by retrieving token from backend status or keytar
     // Set authenticated if tracking is running or token was retrieved during main initialization
     const storedEmail = localStorage.getItem('agent_user_email');
+    const storedRole = localStorage.getItem('agent_user_role') || '';
     if (storedEmail) {
       setUserEmail(storedEmail);
+      setUserRole(storedRole);
       setIsAuthenticated(true);
     }
 
@@ -85,7 +88,9 @@ const App: React.FC = () => {
       }
 
       localStorage.setItem('agent_user_email', email);
+      localStorage.setItem('agent_user_role', role);
       setUserEmail(email);
+      setUserRole(role);
       setIsAuthenticated(true);
 
       // Start background tracking with the newly verified JWT
@@ -120,8 +125,10 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     await window.api.logout();
     localStorage.removeItem('agent_user_email');
+    localStorage.removeItem('agent_user_role');
     setIsAuthenticated(false);
     setIsTrackingActive(false);
+    setUserRole('');
     setEmail('');
     setPassword('');
     setError('');
@@ -220,9 +227,11 @@ const App: React.FC = () => {
                 <button className={`btn ${isTrackingActive ? 'btn-secondary' : ''}`} onClick={handleToggleTracking}>
                   {isTrackingActive ? '⏸️  Pause Tracking' : '▶️  Resume Tracking'}
                 </button>
-                <button className="btn btn-secondary" onClick={handleLogout} style={{ marginTop: '8px' }}>
-                  Sign Out
-                </button>
+                {userRole !== 'EMPLOYEE' && (
+                  <button className="btn btn-secondary" onClick={handleLogout} style={{ marginTop: '8px' }}>
+                    Sign Out
+                  </button>
+                )}
                 <div className="footer-info">
                   Running version 1.0.0 • Remote Desk Agent
                 </div>

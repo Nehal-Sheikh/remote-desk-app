@@ -42,6 +42,7 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Remote Desk Agent
+  include: build/installer.nsh
 
 publish:
   provider: github
